@@ -74,11 +74,12 @@ def resolve_date_range(days: int | None, since: str | None, until: str | None) -
 
 
 def default_ics_path() -> Path:
-    """Platform-appropriate default output path for .ics files."""
+    """Platform-appropriate default output path for .ics files, date-stamped."""
     import sys, os
-    if sys.platform.startswith("linux"):
-        xdg = os.environ.get("XDG_DATA_HOME", "")
-        base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-        return base / "commit-calendar" / "commits.ics"
-    # Windows and macOS: use Documents
-    return Path.home() / "Documents" / "CommitCalendar" / "commits.ics"
+    from datetime import datetime
+    stamp    = datetime.now().strftime("%Y-%m-%d")
+    filename = f"{stamp}_commits.ics"
+    xdg      = os.environ.get("XDG_DATA_HOME", "")
+    linux    = (Path(xdg) if xdg else Path.home() / ".local" / "share") / "commit-calendar"
+    default  = Path.home() / "Documents" / "CommitCalendar"
+    return (linux if sys.platform.startswith("linux") else default) / filename

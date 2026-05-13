@@ -5,16 +5,36 @@
 
 Convert git commits into calendar events — automatically, idempotently, and without cluttering your schedule.
 
+## Two ways to use this
+
+### Option 1 — Download the exe (no Python required)
+
+Download `git-calendar-sync-windows.zip` from [Releases](https://github.com/chushug/git-calendar-sync/releases), extract, and double-click **git-calendar-sync.exe**.
+
+The GUI lets you set everything visually — repository path, calendar service, credentials — and remembers your settings between sessions. For Google Calendar and Microsoft Graph, enter your credentials directly in the app (no `.env` file needed).
+
+For **daily auto-sync without opening the GUI**, the exe also works as a CLI:
+
 ```
+git-calendar-sync.exe sync --method google --days 1 --repo "C:\Projects\MyApp"
+```
+
+Register it as a daily Task Scheduler task:
+
+```powershell
+.\scheduler\setup_windows.ps1 -Method google -Repo "C:\Projects\MyApp"
+```
+
+### Option 2 — Run from source (Python 3.9+)
+
+```bash
+pip install -r requirements.txt
 python sync.py generate --days 7
 python sync.py sync --method google --days 1
+python gui.py   # GUI
 ```
 
-Or launch the GUI:
-
-```
-python gui.py
-```
+Credentials go in a `.env` file (see [Quick Start](#quick-start) below).
 
 ## Features
 

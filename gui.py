@@ -6,7 +6,7 @@ GUI mode (default):
     python gui.py
     python gui.py --repo /path/to/repo
 
-CLI mode (for Task Scheduler / cron — no GUI window):
+CLI mode (no GUI — for Task Scheduler / cron):
     python gui.py generate --days 1
     python gui.py sync --method google --days 1 --repo C:\\Projects\\MyApp
 """
@@ -33,9 +33,10 @@ _env_path = (Path(sys.executable).parent if getattr(sys, "frozen", False) else _
 load_dotenv(_env_path)
 
 # ---------------------------------------------------------------------------
-# CLI passthrough — if first arg is a subcommand, run headless (no GUI)
-# This is what Task Scheduler / cron calls.
+# CLI passthrough — "generate" / "sync" subcommands run headless (no GUI).
+# Task Scheduler calls:  git-calendar-sync.exe sync --method google --days 1
 # ---------------------------------------------------------------------------
+
 
 def _maybe_run_cli() -> None:
     if len(sys.argv) > 1 and sys.argv[1] in ("generate", "sync"):
@@ -43,14 +44,14 @@ def _maybe_run_cli() -> None:
         args = build_parser().parse_args()
         raise SystemExit(args.func(args))
 
+
 _maybe_run_cli()
 
-# Import after CLI check so Textual doesn't initialise for headless runs
 from sync import cmd_generate, cmd_sync  # noqa: E402
 
 from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Button, Checkbox, Footer, Header, Input, Label,
     RadioButton, RadioSet, RichLog, Rule, Static,
@@ -84,13 +85,16 @@ def _save_settings(s: dict) -> None:
 # ---------------------------------------------------------------------------
 
 METHOD_LABELS = {
-    "google":      "Google Calendar          (OAuth2 — requires first-time setup)",
-    "graph":       "Microsoft Graph API      (new Outlook / Microsoft 365)",
-    "outlook-com": "Classic Outlook COM      (Windows only, Office 2016+)",
+    "google":      "Google Calendar",
+    "graph":       "Microsoft Graph API  (new Outlook / Microsoft 365)",
+    "outlook-com": "Classic Outlook COM  (Windows only, Office 2016+)",
 }
 
 ACTION_GENERATE = "generate"
 ACTION_SYNC     = "sync"
+
+# Methods that need no credentials
+_NO_CRED_METHODS = {"outlook-com"}
 
 
 def _colorize(line: str) -> str:
@@ -107,7 +111,7 @@ def _colorize(line: str) -> str:
 
 
 class _LogWriter(io.TextIOBase):
-    """Captures print() output from sync functions and feeds into RichLog."""
+    """Captures print() output from sync functions and streams into RichLog."""
 
     def __init__(self, app: "GitCalendarSyncApp", log: RichLog) -> None:
         self._app = app
@@ -134,7 +138,7 @@ class _LogWriter(io.TextIOBase):
 class GitCalendarSyncApp(App):
     """Textual TUI for git-calendar-sync."""
 
-    DARK = False  # light theme
+    THEME = "catppuccin-latte"
 
     CSS = """
     Screen {
@@ -146,11 +150,13 @@ class GitCalendarSyncApp(App):
         height: 1fr;
     }
 
-    #left {
-        width: 52;
+    /* Left panel scrolls if content is taller than the terminal */
+    VerticalScroll#left {
+        width: 54;
         height: 1fr;
         padding-right: 2;
         border-right: tall $primary;
+        scrollbar-gutter: stable;
     }
 
     #right {
@@ -175,6 +181,7 @@ class GitCalendarSyncApp(App):
         color: $text-disabled;
         text-style: italic;
         margin-top: 1;
+        margin-bottom: 1;
     }
 
     .days-row {
@@ -203,21 +210,14 @@ class GitCalendarSyncApp(App):
         height: auto;
     }
 
-    #method-box {
+    /* Conditional panels — hidden by default, shown with .visible */
+    #method-box, #ics-box, #cred-google, #cred-graph {
         display: none;
         margin-bottom: 1;
     }
 
-    #method-box.visible {
-        display: block;
-    }
-
-    #ics-box {
-        display: none;
-        margin-bottom: 1;
-    }
-
-    #ics-box.visible {
+    #method-box.visible, #ics-box.visible,
+    #cred-google.visible, #cred-graph.visible {
         display: block;
     }
 
@@ -248,23 +248,34 @@ class GitCalendarSyncApp(App):
     def __init__(self, default_repo: str = "") -> None:
         super().__init__()
         self._s = _load_settings()
-        # CLI --repo overrides saved setting
         self._default_repo = default_repo or self._s.get("repo", "")
 
     # ------------------------------------------------------------------
     # Layout
     # ------------------------------------------------------------------
 
-    def compose(self) -> ComposeResult:  # noqa: PLR0912
+    def compose(self) -> ComposeResult:
         saved_action = self._s.get("action", ACTION_GENERATE)
         saved_method = self._s.get("method", "google")
+
+        # Pre-fill credentials from saved settings, falling back to env vars
+        saved_google_creds = (
+            self._s.get("google_creds")
+            or os.environ.get("GOOGLE_CREDENTIALS_FILE", "")
+        )
+        saved_graph_id = (
+            self._s.get("graph_client_id")
+            or os.environ.get("GRAPH_CLIENT_ID", "")
+        )
 
         yield Header()
 
         with Horizontal(id="layout"):
-            # ── Left panel: settings ──────────────────────────────────
-            with Vertical(id="left"):
 
+            # ── Left panel (scrollable) ───────────────────────────────
+            with VerticalScroll(id="left"):
+
+                # Repository path
                 yield Label("Repository path", classes="section-label")
                 yield Static(
                     "Full path to your git project folder. "
@@ -277,6 +288,7 @@ class GitCalendarSyncApp(App):
                     id="repo",
                 )
 
+                # Date range
                 yield Label("Sync range", classes="section-label")
                 with Horizontal(classes="days-row"):
                     yield Label("Last ")
@@ -290,10 +302,11 @@ class GitCalendarSyncApp(App):
 
                 yield Rule()
 
+                # Action selector
                 yield Label("Action", classes="section-label")
                 with RadioSet(id="action-set"):
                     yield RadioButton(
-                        "Generate .ics file   (drag into any calendar app)",
+                        "Generate .ics file   (import into any calendar app)",
                         value=(saved_action == ACTION_GENERATE),
                         id="rb-generate",
                     )
@@ -303,7 +316,7 @@ class GitCalendarSyncApp(App):
                         id="rb-sync",
                     )
 
-                # Sync options — shown only when "Sync to calendar" is selected
+                # ── Sync options (hidden until "Sync" is chosen) ──────
                 with Container(id="method-box"):
                     yield Label("Calendar service", classes="section-label")
                     with RadioSet(id="method-set"):
@@ -313,22 +326,52 @@ class GitCalendarSyncApp(App):
                                 value=(mid == saved_method),
                                 id=f"rb-{mid}",
                             )
+
+                    # Google credentials (shown only for google method)
+                    with Container(id="cred-google"):
+                        yield Label("Google credentials file", classes="section-label")
+                        yield Static(
+                            "Path to client_secret.json downloaded from "
+                            "Google Cloud Console → APIs → Credentials.",
+                            classes="help-text",
+                        )
+                        yield Input(
+                            value=saved_google_creds,
+                            placeholder="C:\\path\\to\\client_secret.json",
+                            id="google-creds",
+                        )
+
+                    # Graph / Azure credentials (shown only for graph method)
+                    with Container(id="cred-graph"):
+                        yield Label("Azure Application (client) ID", classes="section-label")
+                        yield Static(
+                            "From portal.azure.com → App registrations → "
+                            "your app → Overview → Application (client) ID.",
+                            classes="help-text",
+                        )
+                        yield Input(
+                            value=saved_graph_id,
+                            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+                            id="graph-client-id",
+                        )
+
                     yield Checkbox(
                         "First-time setup  (opens OAuth browser / shows device code)",
                         value=False,
                         id="setup",
                     )
 
-                # Generate options — shown only when "Generate .ics" is selected
+                # ── Generate options (hidden until "Generate" is chosen)
                 with Container(id="ics-box"):
                     yield Label("Output path", classes="section-label")
                     yield Static(
-                        "Leave empty to save to Documents\\CommitCalendar\\commits.ics",
+                        "Where to save the .ics file. "
+                        "Leave empty → Documents\\CommitCalendar\\YYYY-MM-DD_commits.ics",
                         classes="help-text",
                     )
                     yield Input(
                         value=self._s.get("out", ""),
-                        placeholder="(default: Documents\\CommitCalendar\\commits.ics)",
+                        placeholder="(default: Documents\\CommitCalendar\\YYYY-MM-DD_commits.ics)",
                         id="out",
                     )
                     yield Label("Event duration (minutes)", classes="section-label")
@@ -349,7 +392,8 @@ class GitCalendarSyncApp(App):
                 yield Button("Run", id="run-btn", variant="primary")
                 yield Static(
                     "Settings are saved when you click Run.\n"
-                    "For daily auto-sync: run  scheduler\\setup_windows.ps1 -Method google",
+                    "For daily auto-sync without the GUI:\n"
+                    "  scheduler\\setup_windows.ps1 -Method google -Repo \"C:\\your\\repo\"",
                     classes="help-text footer-note",
                 )
 
@@ -367,15 +411,18 @@ class GitCalendarSyncApp(App):
     def on_mount(self) -> None:
         self.action = self._s.get("action", ACTION_GENERATE)
         self._update_panels()
+        self._update_cred_panel()
         self.query_one("#log", RichLog).write(
             "[dim]Ready — press [bold]Run[/bold] or [bold]Ctrl+R[/bold] to start.[/dim]\n"
-            "[dim]First time? Set your repository path, choose an action, then click Run.[/dim]"
+            "[dim]First time? Set your repository path, pick an action, then click Run.[/dim]"
         )
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         if event.radio_set.id == "action-set":
             self.action = ACTION_GENERATE if event.index == 0 else ACTION_SYNC
             self._update_panels()
+        elif event.radio_set.id == "method-set":
+            self._update_cred_panel()
 
     def _update_panels(self) -> None:
         method_box = self.query_one("#method-box")
@@ -386,6 +433,15 @@ class GitCalendarSyncApp(App):
         else:
             method_box.remove_class("visible")
             ics_box.add_class("visible")
+
+    def _update_cred_panel(self) -> None:
+        method = self._selected_method()
+        for mid, box_id in [("google", "#cred-google"), ("graph", "#cred-graph")]:
+            box = self.query_one(box_id)
+            if method == mid:
+                box.add_class("visible")
+            else:
+                box.remove_class("visible")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "run-btn":
@@ -401,13 +457,15 @@ class GitCalendarSyncApp(App):
 
     def _persist_settings(self) -> None:
         _save_settings({
-            "repo":     self.query_one("#repo",     Input).value,
-            "days":     self.query_one("#days",     Input).value,
-            "action":   self.action,
-            "method":   self._selected_method(),
-            "out":      self.query_one("#out",      Input).value,
-            "duration": self.query_one("#duration", Input).value,
-            "dry_run":  self.query_one("#dry-run",  Checkbox).value,
+            "repo":            self.query_one("#repo",           Input).value,
+            "days":            self.query_one("#days",           Input).value,
+            "action":          self.action,
+            "method":          self._selected_method(),
+            "google_creds":    self.query_one("#google-creds",   Input).value,
+            "graph_client_id": self.query_one("#graph-client-id", Input).value,
+            "out":             self.query_one("#out",            Input).value,
+            "duration":        self.query_one("#duration",       Input).value,
+            "dry_run":         self.query_one("#dry-run",        Checkbox).value,
         })
 
     # ------------------------------------------------------------------
@@ -425,7 +483,7 @@ class GitCalendarSyncApp(App):
 
         try:
             ns = self._build_namespace()
-            self.call_from_thread(log.write, f"[dim]Command: {ns.command}[/dim]\n")
+            self.call_from_thread(log.write, f"[dim]Running: {ns.command}[/dim]\n")
 
             sys.stdout = writer  # type: ignore[assignment]
             sys.stderr = writer  # type: ignore[assignment]
@@ -468,12 +526,23 @@ class GitCalendarSyncApp(App):
             ns.duration = duration
             ns.func     = cmd_generate
         else:
-            ns.command     = ACTION_SYNC
-            ns.method      = self._selected_method()
-            ns.credentials = os.environ.get("GOOGLE_CREDENTIALS_FILE", "client_secret.json")
-            ns.category    = "Git Commit"
-            ns.setup       = self.query_one("#setup", Checkbox).value
-            ns.func        = cmd_sync
+            method = self._selected_method()
+            ns.command  = ACTION_SYNC
+            ns.method   = method
+            ns.category = "Git Commit"
+            ns.setup    = self.query_one("#setup", Checkbox).value
+            ns.func     = cmd_sync
+
+            if method == "google":
+                creds = self.query_one("#google-creds", Input).value.strip()
+                ns.credentials = creds or os.environ.get("GOOGLE_CREDENTIALS_FILE", "client_secret.json")
+            else:
+                ns.credentials = os.environ.get("GOOGLE_CREDENTIALS_FILE", "client_secret.json")
+
+            if method == "graph":
+                client_id = self.query_one("#graph-client-id", Input).value.strip()
+                if client_id:
+                    os.environ["GRAPH_CLIENT_ID"] = client_id
 
         return ns
 
@@ -493,7 +562,10 @@ class GitCalendarSyncApp(App):
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="git-calendar-sync GUI — or use 'generate'/'sync' subcommands for CLI mode",
+        description=(
+            "git-calendar-sync GUI. "
+            "Pass 'generate' or 'sync' as the first argument for headless CLI mode."
+        ),
     )
     parser.add_argument("--repo", default="", help="Pre-fill the repository path field")
     args = parser.parse_args()
