@@ -11,7 +11,9 @@ Convert git commits into calendar events — automatically, idempotently, and wi
 
 Download `git-calendar-sync-windows.zip` from [Releases](https://github.com/chushug/git-calendar-sync/releases), extract, and double-click **git-calendar-sync.exe**.
 
-The GUI lets you set everything visually — repository path, calendar service, credentials — and remembers your settings between sessions. For Google Calendar and Microsoft Graph, enter your credentials directly in the app (no `.env` file needed).
+The GUI lets you set everything visually - repository path, calendar service, credentials - and remembers your settings between sessions. It now opens in Catppuccin Latte, and the left options panel stays usable in smaller terminal windows with scrolling support. For Google Calendar and Microsoft Graph, enter your credentials directly in the app (no `.env` file needed).
+
+The packaged build does not require Python, but it still needs Git installed so the tool can read commit history.
 
 For **daily auto-sync without opening the GUI**, the exe also works as a CLI:
 
@@ -40,7 +42,9 @@ Credentials go in a `.env` file (see [Quick Start](#quick-start) below).
 
 - Export commits to a standard `.ics` file (no auth, works with any calendar app)
 - Sync directly to Google Calendar, Microsoft Calendar (new Outlook), or classic Outlook
-- Textual TUI with toggles and live output — no terminal knowledge required
+- Textual TUI with saved settings, Catppuccin Latte styling, and live output
+- Small-window friendly option scrolling with `PageUp` / `PageDown`
+- Bundled Windows exe can run either the GUI or headless CLI commands
 - Idempotent: running twice never creates duplicates
 - Stable UIDs: re-importing the same `.ics` updates events, not doubles them
 - Events are always marked **Free** — they never block your calendar
@@ -93,9 +97,9 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 ```bash
 python sync.py generate --days 7
-# Default output: %LOCALAPPDATA%\CommitCalendar\commits.ics  (Windows)
-#                 ~/Library/Application Support/CommitCalendar/commits.ics  (macOS)
-#                 ~/.local/share/commit-calendar/commits.ics  (Linux)
+# Default output: ~/Documents/CommitCalendar/YYYY-MM-DD_commits.ics  (Windows/macOS)
+#                 $XDG_DATA_HOME/commit-calendar/YYYY-MM-DD_commits.ics  (Linux)
+#                 ~/.local/share/commit-calendar/YYYY-MM-DD_commits.ics  (Linux fallback)
 
 python sync.py generate --days 7 --out ~/Desktop/commits.ics   # custom path
 ```
@@ -142,7 +146,8 @@ Uses the Microsoft Graph API. No COM required. Free to set up.
    - Supported account types: **Accounts in any organizational directory + personal Microsoft accounts**
 2. Authentication → Add platform → **Mobile and desktop applications**
    - Add: `https://login.microsoftonline.com/common/oauth2/nativeclient`
-3. API permissions → Add → Microsoft Graph → Delegated → **Calendars.ReadWrite** → Grant admin consent
+3. API permissions → Add → Microsoft Graph → Delegated → **Calendars.ReadWrite**
+   - Grant admin consent only if your organization requires it
 4. Copy the **Application (client) ID** → set in `.env`:
    ```
    GRAPH_CLIENT_ID=your-client-id-here
@@ -263,9 +268,9 @@ Running the tool twice for the same date range never creates duplicate events.
 
 | Platform | Default `.ics` path |
 |----------|---------------------|
-| Windows  | `%LOCALAPPDATA%\CommitCalendar\commits.ics` |
-| macOS    | `~/Library/Application Support/CommitCalendar/commits.ics` |
-| Linux    | `$XDG_DATA_HOME/commit-calendar/commits.ics` (fallback: `~/.local/share/commit-calendar/commits.ics`) |
+| Windows  | `~/Documents/CommitCalendar/YYYY-MM-DD_commits.ics` |
+| macOS    | `~/Documents/CommitCalendar/YYYY-MM-DD_commits.ics` |
+| Linux    | `$XDG_DATA_HOME/commit-calendar/YYYY-MM-DD_commits.ics` (fallback: `~/.local/share/commit-calendar/YYYY-MM-DD_commits.ics`) |
 
 You can always override with `--out /your/path/file.ics`.
 
@@ -280,7 +285,7 @@ Commit messages, author emails, branch names, and remote URLs are embedded in ge
 - Ticket IDs or internal identifiers in commit messages
 - Personal email addresses
 
-Token files (`~/.git-calendar-sync/`) and `.env` are listed in `.gitignore` and are never committed.
+The GUI stores non-secret preferences in `~/.git-calendar-sync/settings.json`, including the credentials file path and Azure client ID you entered. OAuth token files (`~/.git-calendar-sync/`) and `.env` are listed in `.gitignore` and are never committed.
 
 ## Troubleshooting
 
@@ -303,6 +308,9 @@ New Outlook for Windows is not supported.
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
+
+**Small GUI window hides lower options**
+Use the left-panel scrollbar or press `PageUp` / `PageDown`. `Ctrl+Home` and `Ctrl+End` jump to the top and bottom of the options panel.
 
 ## Project Structure
 
@@ -330,7 +338,7 @@ git-calendar-sync/
 └── README.zh.md                  # Chinese
 ```
 
-## Known Limitations (v0.1.0)
+## Known Limitations
 
 - New Outlook for Windows is not supported for COM sync (by design — Microsoft restriction)
 - Local `.ics` import is a snapshot, not a live subscription

@@ -3,16 +3,51 @@
 [![README 中文](https://img.shields.io/badge/README-中文-2563eb?style=for-the-badge)](README.zh.md)
 [![README English](https://img.shields.io/badge/README-English-16a34a?style=for-the-badge)](README.md)
 
-把 git commit 记录自动转换成日历事件。支持 .ics 导出、Google Calendar、Microsoft Graph API 和经典版 Outlook。
+把 git commit 记录自动转换成日历事件。支持 `.ics` 导出、Google Calendar、Microsoft Graph API 和经典版 Outlook。
 
+## 两种使用方式
+
+### 方式 1 - 下载 exe，免装 Python
+
+从 [Releases](https://github.com/chushug/git-calendar-sync/releases) 下载 `git-calendar-sync-windows.zip`，解压后双击 **git-calendar-sync.exe**。
+
+GUI 可以直接填写仓库路径、同步方式和凭据，并在下次启动时保留这些设置。界面默认使用 Catppuccin Latte，小窗口下左侧选项栏也支持滚动查看。Google Calendar 和 Microsoft Graph 的凭据可以直接在应用内填写，不需要额外准备 `.env`。
+
+打包版不需要 Python，但本机仍然需要安装 Git，程序才能读取 commit 历史。
+
+如果想每天自动同步，而不打开 GUI，exe 也可以作为 CLI 使用：
+
+```powershell
+git-calendar-sync.exe sync --method google --days 1 --repo "C:\Projects\MyApp"
 ```
+
+也可以注册 Windows 计划任务：
+
+```powershell
+.\scheduler\setup_windows.ps1 -Method google -Repo "C:\Projects\MyApp"
+```
+
+### 方式 2 - 从源码运行
+
+```bash
+pip install -r requirements.txt
+python sync.py generate --days 7
+python sync.py sync --method google --days 1
+python gui.py
+```
+
+源码运行时，凭据也可以放在 `.env` 中，后文的快速开始部分有完整说明。
+
+## 快速示例
+
+```bash
 python sync.py generate --days 7
 python sync.py sync --method google --days 1
 ```
 
 或启动图形界面：
 
-```
+```bash
 python gui.py
 ```
 
@@ -20,7 +55,9 @@ python gui.py
 
 - 导出为标准 `.ics` 文件（无需授权，任何日历应用都能导入）
 - 直接同步到 Google Calendar、Microsoft Calendar（新版 Outlook）或经典版 Outlook
-- Textual TUI 界面，带切换开关和实时输出日志，无需命令行知识
+- Textual TUI 界面，支持设置持久化、Catppuccin Latte 默认主题和实时输出日志
+- 小窗口下左侧选项栏可滚动，支持 `PageUp` / `PageDown`
+- Windows 打包版既能启动 GUI，也能直接执行无界面的 CLI 命令
 - 幂等操作：多次运行不会产生重复事件
 - 稳定 UID：重新导入同一个 `.ics` 文件会更新事件，而不是重复创建
 - 所有事件标记为 **空闲（Free）**，不会占用你的日历时间
@@ -74,9 +111,9 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```bash
 python sync.py generate --days 7
 # 默认输出路径：
-#   Windows: %LOCALAPPDATA%\CommitCalendar\commits.ics
-#   macOS:   ~/Library/Application Support/CommitCalendar/commits.ics
-#   Linux:   ~/.local/share/commit-calendar/commits.ics
+#   Windows/macOS: ~/Documents/CommitCalendar/YYYY-MM-DD_commits.ics
+#   Linux:         $XDG_DATA_HOME/commit-calendar/YYYY-MM-DD_commits.ics
+#   Linux 备用:    ~/.local/share/commit-calendar/YYYY-MM-DD_commits.ics
 
 python sync.py generate --days 7 --out ~/Desktop/commits.ics  # 自定义路径
 ```
@@ -123,6 +160,7 @@ python sync.py sync --method google --days 1
 2. 身份验证 → 添加平台 → **移动和桌面应用程序**
    - 重定向 URI 添加：`https://login.microsoftonline.com/common/oauth2/nativeclient`
 3. API 权限 → 添加 → Microsoft Graph → 委托权限 → **Calendars.ReadWrite**
+   - 如果组织策略要求，再授予管理员同意
 4. 复制**应用程序（客户端）ID** → 添加到 `.env`：
    ```
    GRAPH_CLIENT_ID=你的客户端ID
@@ -239,9 +277,9 @@ crontab -e
 
 | 平台 | 默认 `.ics` 路径 |
 |------|-----------------|
-| Windows | `%LOCALAPPDATA%\CommitCalendar\commits.ics` |
-| macOS | `~/Library/Application Support/CommitCalendar/commits.ics` |
-| Linux | `$XDG_DATA_HOME/commit-calendar/commits.ics`（备用：`~/.local/share/commit-calendar/commits.ics`）|
+| Windows | `~/Documents/CommitCalendar/YYYY-MM-DD_commits.ics` |
+| macOS | `~/Documents/CommitCalendar/YYYY-MM-DD_commits.ics` |
+| Linux | `$XDG_DATA_HOME/commit-calendar/YYYY-MM-DD_commits.ics`（备用：`~/.local/share/commit-calendar/YYYY-MM-DD_commits.ics`）|
 
 可以用 `--out /你的路径/file.ics` 覆盖默认路径。
 
@@ -256,7 +294,7 @@ crontab -e
 - commit 提交信息中的 Ticket ID 或内部标识符
 - 个人邮箱地址
 
-Token 文件（`~/.git-calendar-sync/`）和 `.env` 已加入 `.gitignore`，不会被提交到版本库。
+GUI 会把非敏感偏好设置保存在 `~/.git-calendar-sync/settings.json`，包括你填写的凭据文件路径和 Azure client ID。OAuth token 文件（`~/.git-calendar-sync/`）和 `.env` 已加入 `.gitignore`，不会被提交到版本库。
 
 ## 常见问题排查
 
@@ -278,6 +316,9 @@ pip install python-dotenv
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
+
+**小窗口下 GUI 底部选项看不到**
+使用左侧滚动条，或按 `PageUp` / `PageDown` 翻页。`Ctrl+Home` 和 `Ctrl+End` 可以跳到选项栏顶部或底部。
 
 ## 项目结构
 
@@ -305,7 +346,7 @@ git-calendar-sync/
 └── README.zh.md                  # 中文文档（本文件）
 ```
 
-## v0.1.0 已知限制
+## 已知限制
 
 - 新版 Outlook for Windows 不支持 COM 同步（这是 Microsoft 的设计限制）
 - 本地导入 `.ics` 是快照，不是持续订阅
