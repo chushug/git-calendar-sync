@@ -1,5 +1,6 @@
 # Core (always needed)
 python-dotenv>=1.0.0
+textual>=0.61.0
 
 # --method google
 google-auth-oauthlib>=1.2.0
