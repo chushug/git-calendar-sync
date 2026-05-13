@@ -1,0 +1,12 @@
+# Core (always needed)
+python-dotenv>=1.0.0
+
+# --method google
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.130.0
+
+# --method graph
+msal>=1.28.0
+requests>=2.31.0
+
+# --method ics and --method outlook-com use stdlib only (no extra packages)

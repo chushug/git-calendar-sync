@@ -1,0 +1,19 @@
+# Credentials & tokens — never commit these
+.env
+client_secret*.json
+~/.git-calendar-sync/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Logs
+*.log
+
+# Generated .ics files
+*.ics
