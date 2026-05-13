@@ -76,12 +76,9 @@ def resolve_date_range(days: int | None, since: str | None, until: str | None) -
 def default_ics_path() -> Path:
     """Platform-appropriate default output path for .ics files."""
     import sys, os
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        return base / "CommitCalendar" / "commits.ics"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "CommitCalendar" / "commits.ics"
-    # Linux / XDG
-    xdg = os.environ.get("XDG_DATA_HOME", "")
-    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-    return base / "commit-calendar" / "commits.ics"
+    if sys.platform.startswith("linux"):
+        xdg = os.environ.get("XDG_DATA_HOME", "")
+        base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+        return base / "commit-calendar" / "commits.ics"
+    # Windows and macOS: use Documents
+    return Path.home() / "Documents" / "CommitCalendar" / "commits.ics"
