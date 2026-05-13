@@ -138,7 +138,7 @@ class _LogWriter(io.TextIOBase):
 class GitCalendarSyncApp(App):
     """Textual TUI for git-calendar-sync."""
 
-    THEME = "catppuccin-latte"
+    DEFAULT_THEME = "catppuccin-latte"
 
     CSS = """
     Screen {
@@ -148,6 +148,7 @@ class GitCalendarSyncApp(App):
     #layout {
         padding: 0 1;
         height: 1fr;
+        overflow: hidden hidden;
     }
 
     VerticalScroll#left {
@@ -155,11 +156,14 @@ class GitCalendarSyncApp(App):
         height: 1fr;
         padding: 0 1;
         border-right: tall $primary;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
     }
 
     #right {
         height: 1fr;
         padding: 0 1;
+        overflow: hidden hidden;
     }
 
     .section-label {
@@ -204,12 +208,20 @@ class GitCalendarSyncApp(App):
 
     TITLE = "git-calendar-sync"
     SUB_TITLE = "Convert git commits into calendar events"
-    BINDINGS = [("ctrl+c", "quit", "Quit"), ("ctrl+r", "run", "Run")]
+    BINDINGS = [
+        ("ctrl+c", "quit", "Quit"),
+        ("ctrl+r", "run", "Run"),
+        ("pageup", "scroll_left_page_up", "Options up"),
+        ("pagedown", "scroll_left_page_down", "Options down"),
+        ("ctrl+home", "scroll_left_home", "Options top"),
+        ("ctrl+end", "scroll_left_end", "Options bottom"),
+    ]
 
     action: reactive[str] = reactive(ACTION_GENERATE)
 
     def __init__(self, default_repo: str = "") -> None:
         super().__init__()
+        self.theme = self.DEFAULT_THEME
         self._s = _load_settings()
         self._default_repo = default_repo or self._s.get("repo", "")
 
@@ -342,6 +354,7 @@ class GitCalendarSyncApp(App):
         for wid in ("#method-box", "#ics-box", "#cred-google", "#cred-graph"):
             self.query_one(wid).display = False
 
+        self.query_one("#left", VerticalScroll).focus()
         self.action = self._s.get("action", ACTION_GENERATE)
         self._update_panels()
         self.query_one("#log", RichLog).write(
@@ -371,6 +384,18 @@ class GitCalendarSyncApp(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "run-btn":
             self.action_run()
+
+    def action_scroll_left_page_up(self) -> None:
+        self.query_one("#left", VerticalScroll).scroll_page_up(animate=False)
+
+    def action_scroll_left_page_down(self) -> None:
+        self.query_one("#left", VerticalScroll).scroll_page_down(animate=False)
+
+    def action_scroll_left_home(self) -> None:
+        self.query_one("#left", VerticalScroll).scroll_home(animate=False, x_axis=False)
+
+    def action_scroll_left_end(self) -> None:
+        self.query_one("#left", VerticalScroll).scroll_end(animate=False, x_axis=False)
 
     def action_run(self) -> None:
         log = self.query_one("#log", RichLog)
