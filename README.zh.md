@@ -10,18 +10,21 @@ python sync.py generate --days 7
 python sync.py sync --method google --days 1
 ```
 
----
+或启动图形界面：
+
+```
+python gui.py
+```
 
 ## 功能特性
 
 - 导出为标准 `.ics` 文件（无需授权，任何日历应用都能导入）
 - 直接同步到 Google Calendar、Microsoft Calendar（新版 Outlook）或经典版 Outlook
+- Textual TUI 界面，带切换开关和实时输出日志，无需命令行知识
 - 幂等操作：多次运行不会产生重复事件
 - 稳定 UID：重新导入同一个 `.ics` 文件会更新事件，而不是重复创建
 - 所有事件标记为 **空闲（Free）**，不会占用你的日历时间
 - 支持 Windows Task Scheduler 和 cron 自动化
-
----
 
 ## 兼容性说明
 
@@ -38,8 +41,6 @@ python sync.py sync --method google --days 1
 > **关于新版 Outlook：** 新版 Outlook for Windows 是基于 Web 的应用，没有 COM 接口。
 > 请改用 `--method graph`（Microsoft Graph API）或 `--method google`（如果已绑定 Google 账号）。
 
----
-
 ## 安装要求
 
 **所有方法：**
@@ -55,7 +56,7 @@ pip install -r requirements.txt
 如果只需要生成 `.ics`（不需要 Google/Graph 同步）：
 
 ```bash
-pip install python-dotenv
+pip install python-dotenv textual
 ```
 
 **Windows — PowerShell 执行策略**（outlook-com 方法和任务调度器需要）：
@@ -65,8 +66,6 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
 > 不要使用 `Unrestricted`，`RemoteSigned` 是所需的最低权限，更加安全。
-
----
 
 ## 快速开始
 
@@ -148,8 +147,6 @@ python sync.py sync --method outlook-com --days 1
 python sync.py sync --method outlook-com --days 1 --dry-run  # 预览模式
 ```
 
----
-
 ## 完整参数说明
 
 ### `generate` — 生成 .ics 文件
@@ -179,8 +176,6 @@ python sync.py sync --method google|graph|outlook-com
   [--dry-run]         只打印，不写入
 ```
 
----
-
 ## 日历事件格式
 
 每个 commit 映射为以下日历事件：
@@ -200,9 +195,9 @@ UID:      <完整 hash>@<仓库名>.commitcal（稳定，永不改变）
 提醒:     关闭
 ```
 
-**UID 稳定性：** 同一个 commit 总是生成相同的 UID。重新导入同一个 `.ics` 到支持 UID 匹配的日历应用时，会更新现有事件而不是重复创建。
+**时长选项：** 通过 `--duration` 设置 5 / 10 / 15（默认）/ 30 / 60 分钟。
 
----
+**UID 稳定性：** 同一个 commit 总是生成相同的 UID。重新导入同一个 `.ics` 到支持 UID 匹配的日历应用时，会更新现有事件而不是重复创建。
 
 ## 自动每日同步
 
@@ -229,8 +224,6 @@ crontab -e
 30 23 * * * cd /你的仓库路径 && python /git-calendar-sync路径/sync.py sync --method google --days 1
 ```
 
----
-
 ## 去重机制
 
 对同一时间段多次运行不会产生重复事件。
@@ -241,8 +234,6 @@ crontab -e
 | `google` | 在 `extendedProperties.private` 中存储 `gitHash`，插入前查询 |
 | `graph` | 在事件描述中搜索 commit hash，插入前检查 |
 | `outlook-com` | 扫描现有日历条目的描述字段中的 `Hash: <sha>` |
-
----
 
 ## 输出文件位置
 
@@ -256,8 +247,6 @@ crontab -e
 
 > **提示：** 不要把 `.ics` 文件输出到 Git 仓库目录内，除非你确实想发布这个日历文件。
 
----
-
 ## 安全与隐私
 
 生成的事件中包含 commit 提交信息、作者邮箱、分支名和远程 URL。
@@ -268,8 +257,6 @@ crontab -e
 - 个人邮箱地址
 
 Token 文件（`~/.git-calendar-sync/`）和 `.env` 已加入 `.gitignore`，不会被提交到版本库。
-
----
 
 ## 常见问题排查
 
@@ -292,7 +279,31 @@ pip install python-dotenv
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
----
+## 项目结构
+
+```
+git-calendar-sync/
+├── gui.py                        # Textual TUI 入口
+├── sync.py                       # CLI 入口（generate / sync）
+├── core/
+│   ├── models.py                 # Commit 数据类，带稳定 UID
+│   └── git_log.py                # git log 解析，平台路径处理
+├── methods/
+│   ├── ics.py                    # generate：RFC 5545 .ics 输出
+│   ├── google_cal.py             # sync：Google Calendar API
+│   ├── graph_api.py              # sync：Microsoft Graph API
+│   └── outlook_com.py            # sync：经典版 Outlook COM（Windows）
+├── scheduler/
+│   ├── setup_windows.ps1         # Task Scheduler 注册脚本
+│   └── _outlook_com_worker.ps1   # PowerShell COM 工作脚本
+├── build.ps1                     # 构建 Windows .exe 发行版
+├── git-calendar-sync.spec        # PyInstaller 配置
+├── requirements.txt
+├── .env.example
+├── .gitignore
+├── README.md                     # 英文文档
+└── README.zh.md                  # 中文文档（本文件）
+```
 
 ## v0.1.0 已知限制
 
@@ -301,8 +312,6 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 - 不支持多账号 Outlook（使用默认配置文件）
 - Rebase/amend 后的 commit（hash 变化）会被视为新 commit
 - macOS 和 Linux 上的跨平台 `.ics` 生成未经测试
-
----
 
 ## 许可证
 

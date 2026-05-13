@@ -10,18 +10,21 @@ python sync.py generate --days 7
 python sync.py sync --method google --days 1
 ```
 
----
+Or launch the GUI:
+
+```
+python gui.py
+```
 
 ## Features
 
 - Export commits to a standard `.ics` file (no auth, works with any calendar app)
 - Sync directly to Google Calendar, Microsoft Calendar (new Outlook), or classic Outlook
+- Textual TUI with toggles and live output — no terminal knowledge required
 - Idempotent: running twice never creates duplicates
 - Stable UIDs: re-importing the same `.ics` updates events, not doubles them
 - Events are always marked **Free** — they never block your calendar
 - Daily automation via Windows Task Scheduler or cron
-
----
 
 ## Compatibility
 
@@ -38,8 +41,6 @@ python sync.py sync --method google --days 1
 > **New Outlook note:** The new Outlook for Windows is a web-based app. It does not expose a COM interface.
 > Use `--method graph` (Microsoft Graph API) or `--method google` (if your Google account is linked) instead.
 
----
-
 ## Requirements
 
 **All methods:**
@@ -55,7 +56,7 @@ pip install -r requirements.txt
 For `.ics` generation only (no Google/Graph sync):
 
 ```bash
-pip install python-dotenv
+pip install python-dotenv textual
 ```
 
 **Windows — PowerShell execution policy** (needed for `outlook-com` and the scheduler):
@@ -65,8 +66,6 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
 > Do not use `Unrestricted` — `RemoteSigned` is the minimum needed and is safer.
-
----
 
 ## Quick Start
 
@@ -149,8 +148,6 @@ python sync.py sync --method outlook-com --days 1
 python sync.py sync --method outlook-com --days 1 --dry-run   # preview only
 ```
 
----
-
 ## All Options
 
 ### `generate` — create an .ics file
@@ -180,8 +177,6 @@ python sync.py sync --method google|graph|outlook-com
   [--dry-run]         Print what would be created; write nothing
 ```
 
----
-
 ## Calendar Event Format
 
 Each commit is mapped to a calendar event as follows:
@@ -205,8 +200,6 @@ Reminder:    Off
 
 **UIDs are stable.** The same commit always produces the same UID.
 Re-importing the same `.ics` into a compliant calendar app updates the existing event rather than creating a duplicate.
-
----
 
 ## Automated Daily Sync
 
@@ -235,8 +228,6 @@ crontab -e
 30 23 * * * cd /path/to/your/repo && python /path/to/git-calendar-sync/sync.py sync --method google --days 1
 ```
 
----
-
 ## Deduplication
 
 Running the tool twice for the same date range never creates duplicate events.
@@ -247,8 +238,6 @@ Running the tool twice for the same date range never creates duplicate events.
 | `google` | Stores `gitHash` in `extendedProperties.private`; queries before inserting. |
 | `graph` | Searches for the commit hash in event bodies before inserting. |
 | `outlook-com` | Scans existing appointments for `Hash: <sha>` in the body. |
-
----
 
 ## Output Files
 
@@ -262,8 +251,6 @@ You can always override with `--out /your/path/file.ics`.
 
 > **Tip:** Do not output `.ics` files inside your Git repository directory unless you intend to publish the calendar.
 
----
-
 ## Security & Privacy
 
 Commit messages, author emails, branch names, and remote URLs are embedded in generated events.
@@ -274,8 +261,6 @@ Commit messages, author emails, branch names, and remote URLs are embedded in ge
 - Personal email addresses
 
 Token files (`~/.git-calendar-sync/`) and `.env` are listed in `.gitignore` and are never committed.
-
----
 
 ## Troubleshooting
 
@@ -299,12 +284,11 @@ New Outlook for Windows is not supported.
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
----
-
 ## Project Structure
 
 ```
 git-calendar-sync/
+├── gui.py                        # Textual TUI entry point
 ├── sync.py                       # CLI entry point (generate / sync)
 ├── core/
 │   ├── models.py                 # Commit dataclass with stable UID
@@ -317,14 +301,14 @@ git-calendar-sync/
 ├── scheduler/
 │   ├── setup_windows.ps1         # Task Scheduler registration
 │   └── _outlook_com_worker.ps1   # PowerShell COM worker
+├── build.ps1                     # Build Windows .exe release
+├── git-calendar-sync.spec        # PyInstaller spec
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
 ├── README.md                     # English (this file)
 └── README.zh.md                  # Chinese
 ```
-
----
 
 ## Known Limitations (v0.1.0)
 
@@ -333,8 +317,6 @@ git-calendar-sync/
 - Multi-account Outlook is not supported (uses default profile)
 - Commits from rebased/amended history are treated as new commits (hash changes)
 - Cross-platform `.ics` generation is untested on macOS and Linux
-
----
 
 ## License
 

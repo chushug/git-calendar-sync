@@ -10,14 +10,25 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import subprocess
+import io
+import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+# ---------------------------------------------------------------------------
+# Path setup — works both from source and as a PyInstaller --onefile bundle
+# ---------------------------------------------------------------------------
+
+_HERE = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).parent
+sys.path.insert(0, str(_HERE))
 
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent / ".env")
+
+# When frozen, look for .env next to the .exe; otherwise next to this file.
+_env_path = (Path(sys.executable).parent if getattr(sys, "frozen", False) else _HERE) / ".env"
+load_dotenv(_env_path)
+
+from sync import cmd_generate, cmd_sync  # noqa: E402 — must come after path setup
 
 
 # ---------------------------------------------------------------------------
@@ -26,10 +37,10 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import (
     Button, Checkbox, Footer, Header, Input, Label,
-    RadioButton, RadioSet, RichLog, Rule, Static,
+    RadioButton, RadioSet, RichLog, Rule,
 )
 from textual.reactive import reactive
 
@@ -42,6 +53,37 @@ METHOD_LABELS = {
 
 ACTION_GENERATE = "generate"
 ACTION_SYNC     = "sync"
+
+
+def _colorize(line: str) -> str:
+    if "ERROR" in line or line.lower().startswith("error"):
+        return f"[red]{line}[/red]"
+    if line.startswith("[dry-run]") or "dry" in line.lower():
+        return f"[yellow]{line}[/yellow]"
+    if line.startswith("  Added") or "Written" in line:
+        return f"[green]{line}[/green]"
+    return line
+
+
+class _LogWriter(io.TextIOBase):
+    """Thread-safe stdout/stderr redirector that feeds into a RichLog widget."""
+
+    def __init__(self, app: "GitCalendarSyncApp", log: RichLog) -> None:
+        self._app = app
+        self._log = log
+        self._buf = ""
+
+    def write(self, s: str) -> int:
+        self._buf += s
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            self._app.call_from_thread(self._log.write, _colorize(line))
+        return len(s)
+
+    def flush(self) -> None:
+        if self._buf.strip():
+            self._app.call_from_thread(self._log.write, _colorize(self._buf))
+            self._buf = ""
 
 
 class GitCalendarSyncApp(App):
@@ -141,7 +183,6 @@ class GitCalendarSyncApp(App):
         yield Header()
 
         with Horizontal(id="layout"):
-            # ---- left panel: settings ----
             with Vertical(id="left"):
                 yield Label("Repository path", classes="section-label")
                 yield Input(
@@ -163,14 +204,12 @@ class GitCalendarSyncApp(App):
                     yield RadioButton("Generate .ics file", value=True, id="rb-generate")
                     yield RadioButton("Sync to calendar",              id="rb-sync")
 
-                # method selector — visible only when Sync is selected
                 with Container(id="method-box"):
                     yield Label("Calendar method", classes="section-label")
                     with RadioSet(id="method-set"):
                         for mid, mlabel in METHOD_LABELS.items():
                             yield RadioButton(mlabel, id=f"rb-{mid}")
 
-                # extra ics options — visible only when Generate is selected
                 with Container(id="ics-box"):
                     yield Label("Output path  (leave empty = default)", classes="section-label")
                     yield Input(placeholder="%LOCALAPPDATA%\\CommitCalendar\\commits.ics", id="out")
@@ -183,7 +222,6 @@ class GitCalendarSyncApp(App):
 
                 yield Button("Run", id="run-btn", variant="primary")
 
-            # ---- right panel: log output ----
             with Vertical(id="right"):
                 yield Label("Output", id="log-label", classes="section-label")
                 yield RichLog(id="log", highlight=True, markup=True, wrap=True)
@@ -225,74 +263,82 @@ class GitCalendarSyncApp(App):
         self._do_run()
 
     # ------------------------------------------------------------------
-    # Background worker
+    # Background worker — calls sync functions directly (PyInstaller safe)
     # ------------------------------------------------------------------
 
     @work(thread=True)
     def _do_run(self) -> None:
-        log  = self.query_one("#log", RichLog)
-        btn  = self.query_one("#run-btn", Button)
+        log = self.query_one("#log", RichLog)
+        btn = self.query_one("#run-btn", Button)
+
+        writer     = _LogWriter(self, log)
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
 
         try:
-            cmd = self._build_command()
-            log.write(f"[dim]$ {' '.join(cmd)}[/dim]\n")
+            ns = self._build_namespace()
+            self.call_from_thread(log.write, f"[dim]Running {ns.command}...[/dim]\n")
 
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                cwd=str(Path(__file__).parent),
-            )
-            for line in proc.stdout:  # type: ignore[union-attr]
-                line = line.rstrip()
-                if "ERROR" in line or "error" in line.lower():
-                    self.call_from_thread(log.write, f"[red]{line}[/red]")
-                elif line.startswith("[dry-run]") or "dry" in line.lower():
-                    self.call_from_thread(log.write, f"[yellow]{line}[/yellow]")
-                elif line.startswith("  Added") or "Written" in line:
-                    self.call_from_thread(log.write, f"[green]{line}[/green]")
-                else:
-                    self.call_from_thread(log.write, line)
-            proc.wait()
+            sys.stdout = writer  # type: ignore[assignment]
+            sys.stderr = writer  # type: ignore[assignment]
 
-            if proc.returncode == 0:
+            if ns.command == ACTION_GENERATE:
+                rc = cmd_generate(ns)
+            else:
+                rc = cmd_sync(ns)
+
+            writer.flush()
+
+            if rc == 0:
                 self.call_from_thread(log.write, "\n[bold green]Done.[/bold green]")
             else:
-                self.call_from_thread(log.write, f"\n[bold red]Exited with code {proc.returncode}[/bold red]")
+                self.call_from_thread(log.write, f"\n[bold red]Exited with code {rc}[/bold red]")
 
+        except SystemExit as e:
+            writer.flush()
+            code = e.code if isinstance(e.code, int) else 1
+            if code == 0:
+                self.call_from_thread(log.write, "\n[bold green]Done.[/bold green]")
+            else:
+                self.call_from_thread(log.write, f"\n[bold red]Exited with code {code}[/bold red]")
         except Exception as exc:
+            writer.flush()
             self.call_from_thread(log.write, f"[bold red]Error: {exc}[/bold red]")
         finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
             self.call_from_thread(setattr, btn, "disabled", False)
 
-    def _build_command(self) -> list[str]:
-        sync_py = str(Path(__file__).parent / "sync.py")
-        cmd     = [sys.executable, sync_py]
+    def _build_namespace(self) -> argparse.Namespace:
+        repo    = self.query_one("#repo",    Input).value.strip() or None
+        days    = int(self.query_one("#days", Input).value.strip() or "1")
+        dry_run = self.query_one("#dry-run", Checkbox).value
 
-        repo    = self.query_one("#repo",     Input).value.strip()
-        days    = self.query_one("#days",     Input).value.strip() or "1"
-        dry_run = self.query_one("#dry-run",  Checkbox).value
+        ns = argparse.Namespace(
+            repo=repo,
+            days=days,
+            since=None,
+            until=None,
+            dry_run=dry_run,
+        )
 
         if self.action == ACTION_GENERATE:
-            cmd.append("generate")
-            out      = self.query_one("#out",      Input).value.strip()
-            duration = self.query_one("#duration", Input).value.strip() or "15"
-            if out:
-                cmd += ["--out", out]
-            cmd += ["--duration", duration]
+            out      = self.query_one("#out",      Input).value.strip() or None
+            duration = int(self.query_one("#duration", Input).value.strip() or "15")
+            ns.command  = ACTION_GENERATE
+            ns.out      = out
+            ns.duration = duration
+            ns.func     = cmd_generate
         else:
-            cmd.append("sync")
             method = self._selected_method()
-            cmd += ["--method", method]
+            ns.command     = ACTION_SYNC
+            ns.method      = method
+            ns.credentials = os.environ.get("GOOGLE_CREDENTIALS_FILE", "client_secret.json")
+            ns.category    = "Git Commit"
+            ns.setup       = False
+            ns.func        = cmd_sync
 
-        if repo:
-            cmd += ["--repo", repo]
-        cmd += ["--days", days]
-        if dry_run:
-            cmd.append("--dry-run")
-
-        return cmd
+        return ns
 
     def _selected_method(self) -> str:
         method_set = self.query_one("#method-set", RadioSet)
