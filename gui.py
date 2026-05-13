@@ -146,22 +146,20 @@ class GitCalendarSyncApp(App):
     }
 
     #layout {
-        padding: 1 2;
+        padding: 0 1;
         height: 1fr;
     }
 
-    /* Left panel scrolls if content is taller than the terminal */
     VerticalScroll#left {
-        width: 54;
+        width: 50;
         height: 1fr;
-        padding-right: 2;
+        padding: 0 1;
         border-right: tall $primary;
-        scrollbar-gutter: stable;
     }
 
     #right {
         height: 1fr;
-        padding-left: 2;
+        padding: 0 1;
     }
 
     .section-label {
@@ -171,36 +169,12 @@ class GitCalendarSyncApp(App):
         margin-bottom: 0;
     }
 
-    .help-text {
+    .muted {
         color: $text-muted;
-        margin-top: 0;
-        margin-bottom: 1;
-    }
-
-    .footer-note {
-        color: $text-disabled;
-        text-style: italic;
-        margin-top: 1;
-        margin-bottom: 1;
-    }
-
-    .days-row {
-        height: 3;
-        align: left middle;
-        margin-bottom: 1;
-    }
-
-    .days-row Label {
-        margin-top: 1;
-    }
-
-    .days-row Input {
-        width: 6;
-        margin-bottom: 0;
     }
 
     Input {
-        margin-bottom: 1;
+        margin-bottom: 0;
     }
 
     RadioSet {
@@ -208,10 +182,6 @@ class GitCalendarSyncApp(App):
         margin-bottom: 0;
         padding: 0;
         height: auto;
-    }
-
-    #method-box, #ics-box, #cred-google, #cred-graph {
-        margin-bottom: 1;
     }
 
     #run-btn {
@@ -250,16 +220,8 @@ class GitCalendarSyncApp(App):
     def compose(self) -> ComposeResult:
         saved_action = self._s.get("action", ACTION_GENERATE)
         saved_method = self._s.get("method", "google")
-
-        # Pre-fill credentials from saved settings, falling back to env vars
-        saved_google_creds = (
-            self._s.get("google_creds")
-            or os.environ.get("GOOGLE_CREDENTIALS_FILE", "")
-        )
-        saved_graph_id = (
-            self._s.get("graph_client_id")
-            or os.environ.get("GRAPH_CLIENT_ID", "")
-        )
+        saved_google_creds = self._s.get("google_creds") or os.environ.get("GOOGLE_CREDENTIALS_FILE", "")
+        saved_graph_id     = self._s.get("graph_client_id") or os.environ.get("GRAPH_CLIENT_ID", "")
 
         yield Header()
 
@@ -268,48 +230,37 @@ class GitCalendarSyncApp(App):
             # ── Left panel (scrollable) ───────────────────────────────
             with VerticalScroll(id="left"):
 
-                # Repository path
                 yield Label("Repository path", classes="section-label")
-                yield Static(
-                    "Full path to your git project folder. "
-                    "Leave empty to use the current directory.",
-                    classes="help-text",
-                )
                 yield Input(
                     value=self._default_repo,
-                    placeholder="e.g.  C:\\Projects\\MyApp",
+                    placeholder="C:\\Projects\\MyApp  (empty = current dir)",
                     id="repo",
                 )
 
-                # Date range
-                yield Label("Sync range", classes="section-label")
-                with Horizontal(classes="days-row"):
-                    yield Label("Last ")
-                    yield Input(
-                        value=self._s.get("days", "1"),
-                        id="days",
-                        restrict=r"\d*",
-                        max_length=3,
-                    )
-                    yield Label(" day(s) of commits")
+                yield Label("Days to include", classes="section-label")
+                yield Input(
+                    value=self._s.get("days", "1"),
+                    placeholder="1",
+                    id="days",
+                    max_length=3,
+                )
 
                 yield Rule()
 
-                # Action selector
                 yield Label("Action", classes="section-label")
                 with RadioSet(id="action-set"):
                     yield RadioButton(
-                        "Generate .ics file   (import into any calendar app)",
+                        "Generate .ics file",
                         value=(saved_action == ACTION_GENERATE),
                         id="rb-generate",
                     )
                     yield RadioButton(
-                        "Sync to calendar     (push commits directly)",
+                        "Sync to calendar",
                         value=(saved_action == ACTION_SYNC),
                         id="rb-sync",
                     )
 
-                # ── Sync options (hidden until "Sync" is chosen) ──────
+                # ── Sync options ──────────────────────────────────────
                 with Container(id="method-box"):
                     yield Label("Calendar service", classes="section-label")
                     with RadioSet(id="method-set"):
@@ -320,27 +271,19 @@ class GitCalendarSyncApp(App):
                                 id=f"rb-{mid}",
                             )
 
-                    # Google credentials (shown only for google method)
                     with Container(id="cred-google"):
-                        yield Label("Google credentials file", classes="section-label")
-                        yield Static(
-                            "Path to client_secret.json downloaded from "
-                            "Google Cloud Console → APIs → Credentials.",
-                            classes="help-text",
-                        )
+                        yield Label("Google: path to client_secret.json", classes="section-label")
                         yield Input(
                             value=saved_google_creds,
                             placeholder="C:\\path\\to\\client_secret.json",
                             id="google-creds",
                         )
 
-                    # Graph / Azure credentials (shown only for graph method)
                     with Container(id="cred-graph"):
-                        yield Label("Azure Application (client) ID", classes="section-label")
+                        yield Label("Azure: Application (client) ID", classes="section-label")
                         yield Static(
-                            "From portal.azure.com → App registrations → "
-                            "your app → Overview → Application (client) ID.",
-                            classes="help-text",
+                            "portal.azure.com → App registrations → your app → Overview",
+                            classes="muted",
                         )
                         yield Input(
                             value=saved_graph_id,
@@ -349,45 +292,38 @@ class GitCalendarSyncApp(App):
                         )
 
                     yield Checkbox(
-                        "First-time setup  (opens OAuth browser / shows device code)",
+                        "First-time OAuth setup",
                         value=False,
                         id="setup",
                     )
 
-                # ── Generate options (hidden until "Generate" is chosen)
+                # ── Generate options ──────────────────────────────────
                 with Container(id="ics-box"):
-                    yield Label("Output path", classes="section-label")
-                    yield Static(
-                        "Where to save the .ics file. "
-                        "Leave empty → Documents\\CommitCalendar\\YYYY-MM-DD_commits.ics",
-                        classes="help-text",
-                    )
+                    yield Label("Output path  (empty = Documents\\CommitCalendar)", classes="section-label")
                     yield Input(
                         value=self._s.get("out", ""),
-                        placeholder="(default: Documents\\CommitCalendar\\YYYY-MM-DD_commits.ics)",
+                        placeholder="Documents\\CommitCalendar\\YYYY-MM-DD_commits.ics",
                         id="out",
                     )
                     yield Label("Event duration (minutes)", classes="section-label")
                     yield Input(
                         value=self._s.get("duration", "15"),
+                        placeholder="15",
                         id="duration",
-                        restrict=r"\d*",
                         max_length=3,
                     )
 
                 yield Rule()
 
                 yield Checkbox(
-                    "Dry run  (preview — nothing is written or sent)",
+                    "Dry run  (preview only — nothing written)",
                     value=self._s.get("dry_run", False),
                     id="dry-run",
                 )
                 yield Button("Run", id="run-btn", variant="primary")
                 yield Static(
-                    "Settings are saved when you click Run.\n"
-                    "For daily auto-sync without the GUI:\n"
-                    "  scheduler\\setup_windows.ps1 -Method google -Repo \"C:\\your\\repo\"",
-                    classes="help-text footer-note",
+                    "Daily auto-sync: scheduler\\setup_windows.ps1 -Method google",
+                    classes="muted",
                 )
 
             # ── Right panel: output log ───────────────────────────────
@@ -499,8 +435,11 @@ class GitCalendarSyncApp(App):
             self.call_from_thread(setattr, btn, "disabled", False)
 
     def _build_namespace(self) -> argparse.Namespace:
-        repo    = self.query_one("#repo",    Input).value.strip() or None
-        days    = int(self.query_one("#days", Input).value.strip() or "1")
+        repo    = self.query_one("#repo", Input).value.strip() or None
+        try:
+            days = max(1, int(self.query_one("#days", Input).value.strip() or "1"))
+        except ValueError:
+            days = 1
         dry_run = self.query_one("#dry-run", Checkbox).value
 
         ns = argparse.Namespace(
@@ -508,8 +447,11 @@ class GitCalendarSyncApp(App):
         )
 
         if self.action == ACTION_GENERATE:
-            out      = self.query_one("#out",      Input).value.strip() or None
-            duration = int(self.query_one("#duration", Input).value.strip() or "15")
+            out = self.query_one("#out", Input).value.strip() or None
+            try:
+                duration = max(1, int(self.query_one("#duration", Input).value.strip() or "15"))
+            except ValueError:
+                duration = 15
             ns.command  = ACTION_GENERATE
             ns.out      = out
             ns.duration = duration
