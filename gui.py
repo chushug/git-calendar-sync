@@ -210,15 +210,8 @@ class GitCalendarSyncApp(App):
         height: auto;
     }
 
-    /* Conditional panels — hidden by default, shown with .visible */
     #method-box, #ics-box, #cred-google, #cred-graph {
-        display: none;
         margin-bottom: 1;
-    }
-
-    #method-box.visible, #ics-box.visible,
-    #cred-google.visible, #cred-graph.visible {
-        display: block;
     }
 
     #run-btn {
@@ -409,9 +402,12 @@ class GitCalendarSyncApp(App):
     # ------------------------------------------------------------------
 
     def on_mount(self) -> None:
+        # Hide all conditional panels first, then reveal correct ones
+        for wid in ("#method-box", "#ics-box", "#cred-google", "#cred-graph"):
+            self.query_one(wid).display = False
+
         self.action = self._s.get("action", ACTION_GENERATE)
         self._update_panels()
-        self._update_cred_panel()
         self.query_one("#log", RichLog).write(
             "[dim]Ready — press [bold]Run[/bold] or [bold]Ctrl+R[/bold] to start.[/dim]\n"
             "[dim]First time? Set your repository path, pick an action, then click Run.[/dim]"
@@ -425,23 +421,16 @@ class GitCalendarSyncApp(App):
             self._update_cred_panel()
 
     def _update_panels(self) -> None:
-        method_box = self.query_one("#method-box")
-        ics_box    = self.query_one("#ics-box")
-        if self.action == ACTION_SYNC:
-            method_box.add_class("visible")
-            ics_box.remove_class("visible")
-        else:
-            method_box.remove_class("visible")
-            ics_box.add_class("visible")
+        is_sync = self.action == ACTION_SYNC
+        self.query_one("#method-box").display = is_sync
+        self.query_one("#ics-box").display    = not is_sync
+        if is_sync:
+            self._update_cred_panel()
 
     def _update_cred_panel(self) -> None:
         method = self._selected_method()
-        for mid, box_id in [("google", "#cred-google"), ("graph", "#cred-graph")]:
-            box = self.query_one(box_id)
-            if method == mid:
-                box.add_class("visible")
-            else:
-                box.remove_class("visible")
+        self.query_one("#cred-google").display = (method == "google")
+        self.query_one("#cred-graph").display  = (method == "graph")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "run-btn":
