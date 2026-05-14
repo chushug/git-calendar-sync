@@ -36,20 +36,7 @@ python sync.py sync --method google --days 1
 python gui.py
 ```
 
-源码运行时，凭据也可以放在 `.env` 中，后文的快速开始部分有完整说明。
-
-## 快速示例
-
-```bash
-python sync.py generate --days 7
-python sync.py sync --method google --days 1
-```
-
-或启动图形界面：
-
-```bash
-python gui.py
-```
+源码运行时，凭据也可以放在 `.env` 中。后面的安装需求和源码快速开始只适用于这条源码路径；exe 用户不需要安装 Python 依赖，也不需要准备 `.env`。
 
 ## 功能特性
 
@@ -80,11 +67,24 @@ python gui.py
 
 ## 安装要求
 
-**所有方法：**
+### Windows exe 打包版
+
+- Windows
+- 已安装 Git，并且 `git` 命令在 `PATH` 中可用
+- 不需要安装 Python
+
+只有在使用计划任务脚本或经典版 Outlook COM 时，才需要设置 PowerShell 执行策略：
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+### 从源码运行
+
 - Python 3.9+
 - Git
 
-**安装依赖：**
+安装依赖：
 
 ```bash
 pip install -r requirements.txt
@@ -96,7 +96,7 @@ pip install -r requirements.txt
 pip install python-dotenv textual
 ```
 
-**Windows — PowerShell 执行策略**（outlook-com 方法和任务调度器需要）：
+Windows 下使用 `outlook-com` 方法或计划任务脚本时，需要设置 PowerShell 执行策略：
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
@@ -104,7 +104,10 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 > 不要使用 `Unrestricted`，`RemoteSigned` 是所需的最低权限，更加安全。
 
-## 快速开始
+## 源码快速开始
+
+本节默认你是从源码运行，因此示例使用 `python sync.py`。
+如果你下载的是 exe，请按上面的 GUI 流程操作；下面的 `.env` 配置只适用于源码运行。
 
 ### 方式 A — 生成 `.ics` 文件（无需授权）
 
@@ -304,10 +307,10 @@ pip install python-dotenv
 ```
 
 **google 方法：`FileNotFoundError: client_secret.json`**
-从 Google Cloud Console 下载 OAuth 凭据，并在 `.env` 中设置 `GOOGLE_CREDENTIALS_FILE`。
+从 Google Cloud Console 下载 OAuth 凭据。使用 exe GUI 时，在 Google 凭据输入框里填写 JSON 路径；从源码运行时，在 `.env` 中设置 `GOOGLE_CREDENTIALS_FILE`，或传入 `--credentials`。
 
 **graph 方法：`GRAPH_CLIENT_ID not set`**
-在 `.env` 中添加 Azure 应用的客户端 ID。
+使用 exe GUI 时，在 Microsoft Graph 输入框里填写 Azure Application/client ID；从源码运行时，把它添加到 `.env`。
 
 **outlook-com 方法：`Cannot complete the operation. You are not connected.`**
 经典版 Outlook 必须已安装并配置好账号。新版 Outlook for Windows 不支持此方法。

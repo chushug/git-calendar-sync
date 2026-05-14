@@ -36,7 +36,7 @@ python sync.py sync --method google --days 1
 python gui.py   # GUI
 ```
 
-Credentials go in a `.env` file (see [Quick Start](#quick-start) below).
+For source installs, credentials can go in a `.env` file. The setup steps below are for this source workflow.
 
 ## Features
 
@@ -67,11 +67,24 @@ Credentials go in a `.env` file (see [Quick Start](#quick-start) below).
 
 ## Requirements
 
-**All methods:**
+### Packaged Windows exe
+
+- Windows
+- Git installed and available on `PATH`
+- No Python installation required
+
+PowerShell execution policy is only needed if you use the scheduler script or classic Outlook COM:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+### Running from source
+
 - Python 3.9+
 - Git
 
-**Install dependencies:**
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -83,7 +96,7 @@ For `.ics` generation only (no Google/Graph sync):
 pip install python-dotenv textual
 ```
 
-**Windows — PowerShell execution policy** (needed for `outlook-com` and the scheduler):
+On Windows, PowerShell execution policy is needed for `outlook-com` and the scheduler:
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
@@ -91,7 +104,10 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 
 > Do not use `Unrestricted` — `RemoteSigned` is the minimum needed and is safer.
 
-## Quick Start
+## Source Quick Start
+
+This section assumes you are running from a source checkout with `python sync.py`.
+If you downloaded the exe, use the GUI flow above; the `.env` setup below is only for source installs.
 
 ### Option A — Generate `.ics` (no auth)
 
@@ -295,10 +311,10 @@ pip install python-dotenv
 ```
 
 **`google` method: `FileNotFoundError: client_secret.json`**
-Download your OAuth credentials from Google Cloud Console and set `GOOGLE_CREDENTIALS_FILE` in `.env`.
+Download your OAuth credentials from Google Cloud Console. In the exe GUI, enter the JSON path in the Google credentials field. From source, set `GOOGLE_CREDENTIALS_FILE` in `.env` or pass `--credentials`.
 
 **`graph` method: `GRAPH_CLIENT_ID not set`**
-Add your Azure Application (client) ID to `.env`.
+In the exe GUI, enter the Azure Application (client) ID in the Microsoft Graph field. From source, add it to `.env`.
 
 **`outlook-com` method: `Cannot complete the operation. You are not connected.`**
 Classic Outlook must be installed and have a configured profile.
